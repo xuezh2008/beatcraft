@@ -1,0 +1,96 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+html,
+body {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: #060311;
+  font-family: 'Nunito', sans-serif;
+  color: #fff;
+  display: flex;
+  justify-content: center;
+}
+
+#root {
+  height: 100%;
+  width: 100%;
+  max-width: 375px;
+  overflow: hidden;
+  background: #0d0a1a;
+  position: relative;
+}
+
+button,
+div {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+@keyframes waveBar {
+  0%,
+  100% {
+    transform: scaleY(0.25);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes pulseRec {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 107, 71, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(255, 107, 71, 0);
+  }
+}
+
+@keyframes rippleOut {
+  0% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(3);
+    opacity: 0;
+  }
+}
+
+@keyframes glowPulse {
+  0%,
+  100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes orbDrift {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(6px, -10px);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
