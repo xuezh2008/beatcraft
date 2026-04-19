@@ -1,1 +1,0 @@
-{"root":["./src/app.tsx","./src/audio.ts","./src/export.ts","./src/instruments.ts","./src/main.tsx","./src/recorder.ts","./src/recordings.ts","./src/types.ts","./src/useripple.ts","./src/views/looperview.tsx","./src/views/orchestraview.tsx","./src/views/padview.tsx","./src/views/waveform.tsx"],"version":"5.9.3"}
