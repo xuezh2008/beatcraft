@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { SCALES } from '../audio';
 import { Recorder } from '../recorder';
@@ -12,42 +12,83 @@ interface Props {
   isPlaying: boolean;
 }
 
-const W = 375;
-const H = 370;
-const CX = W / 2;
-const CY = H + 20;
-const RADII = [60, 108, 158, 208, 258];
-const A1 = (205 * Math.PI) / 180;
-const A2 = (335 * Math.PI) / 180;
+// Flatter arcs than the prototype: 90° sweep (225°→315°) centered on 270° (bottom).
+// Original was 130° (205°→335°), which overflowed narrow viewports and looked over-bent.
+const A1 = (225 * Math.PI) / 180;
+const A2 = (315 * Math.PI) / 180;
 
-function arcPath(r: number): string {
-  const x1 = CX + r * Math.cos(A1);
-  const y1 = CY + r * Math.sin(A1);
-  const x2 = CX + r * Math.cos(A2);
-  const y2 = CY + r * Math.sin(A2);
-  return `M${x1.toFixed(1)} ${y1.toFixed(1)} A${r} ${r} 0 0 1 ${x2.toFixed(1)} ${y2.toFixed(1)}`;
+// Reference geometry at 375px wide — we scale everything by (actualWidth / BASE_W).
+const BASE_W = 375;
+const BASE_H = 370;
+const BASE_CY_OFFSET = 20; // CY = H + BASE_CY_OFFSET so circles are centered below the SVG
+const BASE_RADII = [60, 108, 158, 208, 258];
+
+function arcPath(r: number, cx: number, cy: number): string {
+  const x1 = cx + r * Math.cos(A1);
+  const y1 = cy + r * Math.sin(A1);
+  const x2 = cx + r * Math.cos(A2);
+  const y2 = cy + r * Math.sin(A2);
+  return `M${x1.toFixed(1)} ${y1.toFixed(1)} A${r.toFixed(1)} ${r.toFixed(1)} 0 0 1 ${x2.toFixed(1)} ${y2.toFixed(1)}`;
 }
 
-function noteDotPos(r: number, noteIdx: number) {
+function noteDotPos(r: number, cx: number, cy: number, noteIdx: number) {
   const t = (noteIdx + 0.5) / 8;
   const angle = A1 + (A2 - A1) * t;
-  return { x: CX + r * Math.cos(angle), y: CY + r * Math.sin(angle) };
+  return { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) };
 }
 
-function arcNoteIdx(touchX: number, svgRect: DOMRect, r: number): number {
-  const lx = CX + r * Math.cos(A1);
-  const rx = CX + r * Math.cos(A2);
-  const relX = touchX - svgRect.left;
-  const t = Math.max(0, Math.min(1, (relX - lx) / (rx - lx)));
+function arcNoteIdx(touchX: number, svgRect: DOMRect, r: number, cx: number): number {
+  // svgRect is in CSS px; cx/r are in SVG user coords. Map client X → SVG X via the rect's width.
+  const scaleX = svgRect.width === 0 ? 1 : (BASE_W_current(svgRect) / svgRect.width);
+  const svgX = (touchX - svgRect.left) * scaleX;
+  const lx = cx + r * Math.cos(A1);
+  const rx = cx + r * Math.cos(A2);
+  const t = Math.max(0, Math.min(1, (svgX - lx) / (rx - lx)));
   return Math.floor(t * 8);
+}
+
+// The SVG's viewBox width equals its CSS width (we set both to `W`), so scaleX is effectively 1.
+// The helper above keeps the mapping explicit in case that ever changes.
+function BASE_W_current(rect: DOMRect): number {
+  return rect.width;
 }
 
 export function OrchestraView({ layers, onArcTap, isPlaying }: Props) {
   const [ripples, addRipple] = useRipple();
   const [activeNote, setActiveNote] = useState<Record<number, number | undefined>>({});
+  const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const pressedArc = useRef<number | null>(null);
   const lastNote = useRef<Record<number, number | undefined>>({});
+  const [width, setWidth] = useState(BASE_W);
+
+  // Measure container + respond to resize.
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const apply = () => {
+      const w = el.clientWidth;
+      if (w > 0) setWidth(w);
+    };
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const { W, H, CX, CY, RADII } = useMemo(() => {
+    // Clamp so ultra-narrow viewports still render sensibly.
+    const w = Math.max(240, width);
+    const scale = w / BASE_W;
+    const h = Math.round(BASE_H * scale);
+    return {
+      W: w,
+      H: h,
+      CX: w / 2,
+      CY: h + BASE_CY_OFFSET * scale,
+      RADII: BASE_RADII.map((r) => r * scale),
+    };
+  }, [width]);
 
   const playAt = (i: number, clientX: number, clientY: number) => {
     const svg = svgRef.current;
@@ -57,7 +98,7 @@ export function OrchestraView({ layers, onArcTap, isPlaying }: Props) {
 
     if (layer) {
       const scale = SCALES[layer.id] ?? SCALES.synth;
-      const ni = Math.max(0, Math.min(7, arcNoteIdx(clientX, rect, RADII[i])));
+      const ni = Math.max(0, Math.min(7, arcNoteIdx(clientX, rect, RADII[i], CX)));
       if (lastNote.current[i] === ni) return; // debounce within a drag on the same note
       lastNote.current[i] = ni;
       scale[ni]?.();
@@ -92,7 +133,10 @@ export function OrchestraView({ layers, onArcTap, isPlaying }: Props) {
   };
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: H, overflow: 'hidden' }}>
+    <div
+      ref={containerRef}
+      style={{ position: 'relative', width: '100%', height: H, overflow: 'hidden' }}
+    >
       <div
         style={{
           position: 'absolute',
@@ -106,6 +150,7 @@ export function OrchestraView({ layers, onArcTap, isPlaying }: Props) {
         ref={svgRef}
         width={W}
         height={H}
+        viewBox={`0 0 ${W} ${H}`}
         style={{ position: 'absolute', top: 0, left: 0, overflow: 'visible', touchAction: 'none' }}
       >
         {RADII.map((r, i) => {
@@ -113,7 +158,7 @@ export function OrchestraView({ layers, onArcTap, isPlaying }: Props) {
           const an = activeNote[i];
           const lx = CX;
           const ly = CY - r - 6;
-          const noteDots = layer ? Array(8).fill(0).map((_, ni) => noteDotPos(r, ni)) : [];
+          const noteDots = layer ? Array(8).fill(0).map((_, ni) => noteDotPos(r, CX, CY, ni)) : [];
           return (
             <g
               key={i}
@@ -124,10 +169,10 @@ export function OrchestraView({ layers, onArcTap, isPlaying }: Props) {
               onPointerCancel={handlePointerUp}
             >
               {/* Wide invisible hit zone */}
-              <path d={arcPath(r)} fill="none" stroke="transparent" strokeWidth={44} />
+              <path d={arcPath(r, CX, CY)} fill="none" stroke="transparent" strokeWidth={44} />
               {/* Track groove */}
               <path
-                d={arcPath(r)}
+                d={arcPath(r, CX, CY)}
                 fill="none"
                 stroke="rgba(255,255,255,0.05)"
                 strokeWidth={layer ? 30 : 20}
@@ -136,7 +181,7 @@ export function OrchestraView({ layers, onArcTap, isPlaying }: Props) {
               {/* Layer fill */}
               {layer && (
                 <path
-                  d={arcPath(r)}
+                  d={arcPath(r, CX, CY)}
                   fill="none"
                   stroke={layer.color}
                   strokeWidth={24}
@@ -165,7 +210,7 @@ export function OrchestraView({ layers, onArcTap, isPlaying }: Props) {
               {layer &&
                 an !== undefined &&
                 (() => {
-                  const p = noteDotPos(r, an);
+                  const p = noteDotPos(r, CX, CY, an);
                   return (
                     <circle
                       cx={p.x}

@@ -21,7 +21,9 @@ body {
 #root {
   height: 100%;
   width: 100%;
-  max-width: 375px;
+  /* Let phones use their full width (iPhone 14/15 Pro Max = 430);
+     cap desktop at 480 so the experience stays mobile-feeling. */
+  max-width: 480px;
   overflow: hidden;
   background: #0d0a1a;
   position: relative;
